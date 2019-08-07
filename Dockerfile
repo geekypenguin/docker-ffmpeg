@@ -349,7 +349,6 @@ RUN \
         --enable-vaapi \
         --enable-nvenc \
         --enable-cuvid \
-        --enable-libnpp \
         --enable-shared \
         --enable-avresample \
         --enable-libopencore-amrnb \
