@@ -2,13 +2,11 @@
 #
 # From https://trac.ffmpeg.org/wiki/CompilationGuide/Ubuntu
 #
-# https://hub.docker.com/r/jrottenberg/ffmpeg/
+# edited From https://hub.docker.com/r/jrottenberg/ffmpeg/
 #
 #
+FROM        ubuntu:18.04 AS base
 
-FROM    nvidia/cudagl:9.2-devel-ubuntu18.04 AS devel-base
-
-ENV	    NVIDIA_DRIVER_CAPABILITIES compat32,compute,video
 WORKDIR     /tmp/workdir
 
 RUN     apt-get -yqq update && \
@@ -16,26 +14,15 @@ RUN     apt-get -yqq update && \
         apt-get autoremove -y && \
         apt-get clean -y
 
-FROM        nvidia/cudagl:9.2-runtime-ubuntu18.04 AS runtime-base
+FROM base as build
 
-ENV	    NVIDIA_DRIVER_CAPABILITIES compat32,compute,video
-WORKDIR     /tmp/workdir
-
-RUN     apt-get -yqq update && \
-        apt-get install -yq --no-install-recommends ca-certificates expat libgomp1 libxcb-shape0-dev && \
-        apt-get autoremove -y && \
-        apt-get clean -y
-
-
-FROM  devel-base as build
-
-ENV        NVIDIA_HEADERS_VERSION=8.1.24.9
 ARG        PKG_CONFIG_PATH=/opt/ffmpeg/lib/pkgconfig
-ENV        LD_LIBRARY_PATH="$LD_LIBRARY_PATH:/opt/ffmpeg/lib"
+ARG        LD_LIBRARY_PATH=/opt/ffmpeg/lib
 ARG        PREFIX=/opt/ffmpeg
-ARG        MAKEFLAGS="-j12"
+ARG        MAKEFLAGS="-j2"
 
-ENV         FFMPEG_VERSION=4.2     \
+ENV         NVIDIA_HEADERS_VERSION=8.2.15.8
+ENV         FFMPEG_VERSION=4.1.4     \
             FDKAAC_VERSION=0.1.5      \
             LAME_VERSION=3.100        \
             LIBASS_VERSION=0.13.7     \
@@ -87,6 +74,8 @@ RUN      buildDeps="autoconf \
                     python \
                     libssl-dev \
                     yasm \
+                    libva-dev \
+                    libxcb-shape0-dev \
                     zlib1g-dev" && \
         apt-get -yqq update && \
         apt-get install -yq --no-install-recommends ${buildDeps}
@@ -106,7 +95,7 @@ RUN \
         DIR=/tmp/opencore-amr && \
         mkdir -p ${DIR} && \
         cd ${DIR} && \
-        curl -sL https://kent.dl.sourceforge.net/project/opencore-amr/opencore-amr/opencore-amr-${OPENCOREAMR_VERSION}.tar.gz | \
+        curl -sLk https://kent.dl.sourceforge.net/project/opencore-amr/opencore-amr/opencore-amr-${OPENCOREAMR_VERSION}.tar.gz | \
         tar -zx --strip-components=1 && \
         ./configure --prefix="${PREFIX}" --enable-shared  && \
         make && \
@@ -213,7 +202,7 @@ RUN \
         DIR=/tmp/lame && \
         mkdir -p ${DIR} && \
         cd ${DIR} && \
-        curl -sL https://kent.dl.sourceforge.net/project/lame/lame/$(echo ${LAME_VERSION} | sed -e 's/[^0-9]*\([0-9]*\)[.]\([0-9]*\)[.]\([0-9]*\)\([0-9A-Za-z-]*\)/\1.\2/')/lame-${LAME_VERSION}.tar.gz | \
+        curl -sLk https://kent.dl.sourceforge.net/project/lame/lame/$(echo ${LAME_VERSION} | sed -e 's/[^0-9]*\([0-9]*\)[.]\([0-9]*\)[.]\([0-9]*\)\([0-9A-Za-z-]*\)/\1.\2/')/lame-${LAME_VERSION}.tar.gz | \
         tar -zx --strip-components=1 && \
         ./configure --prefix="${PREFIX}" --bindir="${PREFIX}/bin" --enable-shared --enable-nasm --enable-pic --disable-frontend && \
         make && \
@@ -357,10 +346,9 @@ RUN \
         --disable-debug \
         --disable-doc \
         --disable-ffplay \
-     	--enable-cuda \
+        --enable-vaapi \
         --enable-nvenc \
         --enable-cuvid \
-        --enable-libnpp \
         --enable-shared \
         --enable-avresample \
         --enable-libopencore-amrnb \
@@ -387,8 +375,8 @@ RUN \
         --enable-postproc \
         --enable-small \
         --enable-version3 \
-        --extra-cflags="-I${PREFIX}/include -I${PREFIX}/include/ffnvcodec -I/usr/local/cuda/include/" \
-        --extra-ldflags="-L${PREFIX}/lib -L/usr/local/cuda/lib64/ -L/usr/local/cuda/lib32/" \
+        --extra-cflags="-I${PREFIX}/include -I${PREFIX}/include/ffnvcodec" \
+        --extra-ldflags="-L${PREFIX}/lib" \
         --extra-libs=-ldl \
         --prefix="${PREFIX}" && \
         make && \
@@ -406,18 +394,15 @@ RUN \
         cp -r ${PREFIX}/share/ffmpeg /usr/local/share/ && \
         LD_LIBRARY_PATH=/usr/local/lib ffmpeg -buildconf
 
-
-
-FROM        runtime-base AS release
-MAINTAINER  Julien Rottenberg <julien@rottenberg.info>
+FROM        base AS release
 
 CMD         ["--help"]
 ENTRYPOINT  ["ffmpeg"]
-ENV         LD_LIBRARY_PATH="$LD_LIBRARY_PATH:/usr/local/lib"
+ENV         LD_LIBRARY_PATH=/usr/local/lib
 
-COPY --from=build /usr/local/bin /usr/local/bin/
-COPY --from=build /usr/local/share /usr/local/share/
-COPY --from=build /usr/local/lib /usr/local/lib/
+COPY --from=build /usr/local /usr/local/
 
-# Let's make sure the app built correctly
-# Convenient to verify on https://hub.docker.com/r/jrottenberg/ffmpeg/builds/ console output
+RUN \
+	apt-get update -y && \
+	apt-get install -y --no-install-recommends libva-drm2 libva2 i965-va-driver && \
+	rm -rf /var/lib/apt/lists/*
