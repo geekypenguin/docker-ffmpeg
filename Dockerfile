@@ -22,7 +22,7 @@ ARG        PREFIX=/opt/ffmpeg
 ARG        MAKEFLAGS="-j2"
 
 ENV         NVIDIA_HEADERS_VERSION=8.2.15.8
-ENV         FFMPEG_VERSION=4.1.4     \
+ENV         FFMPEG_VERSION=4.2        \
             FDKAAC_VERSION=0.1.5      \
             LAME_VERSION=3.100        \
             LIBASS_VERSION=0.13.7     \
